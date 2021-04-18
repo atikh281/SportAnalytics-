@@ -1,0 +1,230 @@
+---
+title: "Sport Analytic Project"
+author: "Atieh Khaleghi(atikh281)"
+date: "4/18/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(caret)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this study we will answer the following questions:
+
+- How can we predict a new player will be a winner or loser regarding the result of his/her serve results?
+
+- How can we predict a new player will be a winner or loser regarding the result of his/her ranking?
+
+
+Data Recourse: https://www.kaggle.com/taylorbrownlow/atpwta-tennis-data?select=KaggleMatches.csv
+
+
+```{r}
+df <- read_excel("~./DataTennis.xlsx")
+
+```
+
+# Visualizing 
+
+Different tournaments:
+We have `r length(unique(df$tourney_id))` unique tournaments in our dataset.
+
+The following is the table for the 20 tournaments which had the most number of matches.
+
+```{r echo=FALSE}
+uniqList <- unique(df$tourney_id)
+res <- c()
+for (i in 1:length(uniqList)) {
+  res[i] <- length(which(df$tourney_id==uniqList[i]))
+}
+
+BiggestMatch <- order(res,decreasing = TRUE)
+inds <- BiggestMatch[1:20]
+new_tr <- as.data.frame(cbind("Tournoment"=uniqList[inds],"Number of matches"=res[inds]))
+new_tr$`Number of matches` <- as.numeric(new_tr$`Number of matches`)
+knitr::kable(new_tr)
+```
+
+```{r echo=FALSE}
+
+ggplot(new_tr[11:20,], aes(Tournoment,`Number of matches`,fill=Tournoment))+
+  geom_bar(stat = 'identity') + 
+  geom_text(aes(label = `Number of matches`), position = position_dodge(width = 1), vjust = 1)+
+  labs(title = "10 main Tournoments with number of matches")
+
+```
+
+Preparing a new dataset for our analysing:
+
+```{r}
+winner_df <- as.data.frame(cbind(df$w_1stIn,df$w_1stWon,
+                                 df$w_2ndWon,df$w_ace,df$w_SvGms,
+                                 df$w_svpt,"Type"=1))
+loser_df <- as.data.frame(cbind(df$l_1stIn,df$l_1stWon,df$l_2ndWon,
+                                df$l_ace,df$l_SvGms,df$l_svpt,"Type"=0))
+new_df <- as.data.frame(rbind(winner_df,loser_df))
+colnames(new_df)[1:6] <- c("FirstServeMAde","FirstServePointsWon",
+                      "SecondServePointsWon","AceCount",
+                      "ServeGamesWon","ServePoints")
+new_df$Type <- as.factor(ifelse(new_df$Type==1,"Winner","Loser"))
+
+```
+
+# Box Plot and density plot
+
+```{r echo=FALSE, out.width="80%"}
+x <- new_df[,1:6]
+y <- new_df[,7]
+#par(mfrow=c(2,3))
+#  for(i in 1:6) {
+#  boxplot(x[,i], main=names(new_df)[i])
+#  }
+
+featurePlot(x=x, y=y, plot="box",## Add a key at the top
+            auto.key = list(columns = 3))
+```
+
+```{r echo=FALSE, out.width="80%"}
+featurePlot(x=x, y=y,plot = "density", 
+            ## Pass in options to xyplot() to 
+            ## make it prettier
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")), 
+            adjust = 1.5, 
+            pch = "|", 
+            layout = c(2, 3), 
+            auto.key = list(columns = 2))
+
+```
+# Selecting  a proper model
+
+Since we do not know which algorithm is better for our data set we will evaluate 5 different algorithms:
+
+- Linear Discriminant Analysis (LDA)
+
+- k-Nearest Neighbors (KNN).
+
+- Support Vector Machines (SVM) with a linear kernel.
+
+- Random Forest (RF)
+
+- Neural Networks(NNs)
+
+
+We will 10-fold crossvalidation to estimate accuracy.
+
+This will split our dataset into 10 parts, train in 9 and test on 1 and release for all combinations of train-test splits. We will also repeat the process 3 times for each algorithm with different splits of the data into 10 groups, in an effort to get a more accurate estimate.
+
+## Run algorithms using 10-fold cross validation
+
+We are using the metric of “Accuracy” to evaluate models. This is a ratio of the number of correctly predicted instances in divided by the total number of instances in the dataset multiplied by 100 to give a percentage (e.g. 95% accurate). We will be using the metric variable when we run build and evaluate each model next.
+
+
+## Omitting Nas
+
+```{r}
+set.seed(12356)
+n <- dim(new_df)[1]
+id <- sample(1:n)
+N_df <- new_df[id,]
+N_df <- as.data.frame(na.omit(N_df))
+```
+
+## Split dataset into train and test
+
+```{r}
+n <- dim(N_df)[1]
+id <- sample(1:n,0.7*n)
+trainSet <- N_df[id,]
+testSet <- N_df[-id,]
+```
+
+```{r results='hide',message=FALSE,warning=FALSE}
+#linear algorithms
+set.seed(12356)
+fit.lda <- caret::train(Type~., data=trainSet,method="lda",
+                        metric="Accuracy", 
+                        trControl=trainControl(method="cv", number=10))
+
+#KNN
+set.seed(12356)
+fit.knn <- train(Type~., data=trainSet, method="knn",
+                 metric="Accuracy", 
+                 trControl=trainControl(method="cv", number=10))
+
+# c) advanced algorithms
+# SVM
+set.seed(12356)
+fit.svm <- train(Type~., data=trainSet, method="svmRadial", 
+                 metric="Accuracy", 
+                 trControl=trainControl(method="cv", number=10))
+
+# RF
+set.seed(12356)
+fit.rf <- train(Type~., data=trainSet, method="rf",
+                metric="Accuracy", 
+                trControl=trainControl(method="cv", number=10))
+
+
+# NNs
+set.seed(12356)
+fit.nns <- train(Type~., data=trainSet, method="nnet",
+                 metric="Accuracy", 
+                 trControl=trainControl(method="cv", number=10))
+
+```
+
+We now have 5 models and accuracy estimations for each. We need to compare the models to each other and select the most accurate.
+
+We can report on the accuracy of each model by first creating a list of the created models and using the summary function.
+
+## summarize accuracy of models
+We can see the accuracy of each classifier and also other metrics like Kappa:
+
+
+```{r}
+results <- resamples(list(lda=fit.lda, NNs=fit.nns,
+                          svm=fit.svm, KNN=fit.knn,
+                          RF=fit.rf))
+resTemp <- summary(results)
+knitr::kable(resTemp$statistics$Accuracy)
+knitr::kable(resTemp$statistics$Kappa)
+```
+
+We can also create a plot of the model evaluation results and compare the spread and the mean accuracy of each model. There is a population of accuracy measures for each algorithm because each algorithm was evaluated 10 times (10 fold cross validation).
+
+```{r}
+dotplot(results)
+```
+##  Make Predictions
+
+The NNs and LDA were respictively the most accurate models. Now we want to get an idea of the accuracy of the NNs model and LDA model on our test set.
+
+## Confusion matrix for Neural Networks model:
+
+```{r}
+# estimate skill of NNs on the Test dataset
+preds <- predict(fit.nns, testSet)
+confusionMatrix(preds, testSet$Type)
+```
+
+## Confusion matrix for LDA model:
+
+```{r}
+# estimate skill of LDA on the Test dataset
+preds <- predict(fit.lda, testSet)
+confusionMatrix(preds, testSet$Type)
+```
+
+We can see that the accuracy is 79%. Fairly we have an accurate and a reliably accurate model with NNs.
+
+\newpage
+
+# Appendix
+
+```{r ref.label=knitr::all_labels(), echo = T, eval = F}
+```
