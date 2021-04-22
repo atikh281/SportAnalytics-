@@ -100,6 +100,9 @@ featurePlot(x=x, y=y,plot = "density",
             auto.key = list(columns = 2))
 
 ```
+
+\newpage
+
 # Selecting  a proper model
 
 Since we do not know which algorithm is better for our data set we will evaluate 5 different algorithms:
