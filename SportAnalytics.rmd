@@ -10,20 +10,52 @@ library(readxl)
 library(dplyr)
 library(ggplot2)
 library(caret)
+library(knitr)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-In this study we will answer the following questions:
+# Introduction
+
+Distinguishing features to predict the status of a tennis player is the aim of this study. Among all attributes in the data set[1], the following set of features related to Serve of the player have been considered.
+
+ - Winner's serve points
+ 
+ - Winner first serves made
+ 
+ - Winner first serve points won
+ 
+ - Winner second serve points won
+ 
+ - Winner service games won
+ 
+ - Winner's ace count
+ 
+ - Loser's serve points
+ 
+ - Loser first serves made
+ 
+ - Loser first serve points won
+ 
+ - Loser second serve points won
+ 
+ - Loser service games won
+ 
+ - Loser's ace count
+ 
+Exploring the data, training various Machine learning algorithms and evaluate them to choose the most accurate ones to predict the prospective players will be  processed in this project.
+
+Thus the following question will be answered:
 
 - How can we predict a new player will be a winner or loser regarding the result of his/her serve results?
 
-- How can we predict a new player will be a winner or loser regarding the result of his/her ranking?
+# Background
+
+In many sport matches, interested in predicting the outcomes and watching the games to verify their predictions has been increased among spectators. Traditional approaches include subjective prediction, objective prediction, and simple statistical methods. However, these approaches may not be too reliable in many situations.[3]
+
+Machine learning (ML) is one of the intelligent techniques that have powerful tools for classification and prediction. One of the expanding areas necessitating good predictive accuracy is sport prediction, due to the large monetary amounts involved in betting. Moreover, coaches, club managers and owners` demand has been increased for classification models so that they can distinguish and design better strategies needed to win matches.[2]
 
 
-Data Recourse: https://www.kaggle.com/taylorbrownlow/atpwta-tennis-data?select=KaggleMatches.csv
-
-
-```{r}
+```{r InsertingData,echo=FALSE}
 df <- read_excel("~./DataTennis.xlsx")
 
 ```
@@ -35,7 +67,7 @@ We have `r length(unique(df$tourney_id))` unique tournaments in our dataset.
 
 The following is the table for the 20 tournaments which had the most number of matches.
 
-```{r echo=FALSE}
+```{r UniqueTournoment, echo=FALSE}
 uniqList <- unique(df$tourney_id)
 res <- c()
 for (i in 1:length(uniqList)) {
@@ -44,52 +76,69 @@ for (i in 1:length(uniqList)) {
 
 BiggestMatch <- order(res,decreasing = TRUE)
 inds <- BiggestMatch[1:20]
-new_tr <- as.data.frame(cbind("Tournoment"=uniqList[inds],"Number of matches"=res[inds]))
+new_tr <- as.data.frame(cbind("Tournoment"=uniqList[inds],
+                              "Number of matches"=res[inds]))
 new_tr$`Number of matches` <- as.numeric(new_tr$`Number of matches`)
 knitr::kable(new_tr)
 ```
 
-```{r echo=FALSE}
+```{r PlotNumberOfMatches, echo=FALSE}
 
 ggplot(new_tr[11:20,], aes(Tournoment,`Number of matches`,fill=Tournoment))+
   geom_bar(stat = 'identity') + 
-  geom_text(aes(label = `Number of matches`), position = position_dodge(width = 1), vjust = 1)+
-  labs(title = "10 main Tournoments with number of matches")
+  geom_text(aes(label = `Number of matches`), 
+            position = position_dodge(width = 1), vjust = 1)+
+  labs(title = "10 main Tournoments with number of matches")+
+  theme(axis.text=element_text(size=6),
+        axis.title=element_text(size=10,face="bold"))
 
 ```
 
-Preparing a new dataset for our analysing:
+Preparing a new data set for our analyzing:
 
-```{r}
+```{r CreateDatafram, echo=FALSE}
 winner_df <- as.data.frame(cbind(df$w_1stIn,df$w_1stWon,
                                  df$w_2ndWon,df$w_ace,df$w_SvGms,
                                  df$w_svpt,"Type"=1))
 loser_df <- as.data.frame(cbind(df$l_1stIn,df$l_1stWon,df$l_2ndWon,
                                 df$l_ace,df$l_SvGms,df$l_svpt,"Type"=0))
 new_df <- as.data.frame(rbind(winner_df,loser_df))
-colnames(new_df)[1:6] <- c("FirstServeMAde","FirstServePointsWon",
+colnames(new_df)[1:6] <- c("FirstServeMade","FirstServePointsWon",
                       "SecondServePointsWon","AceCount",
                       "ServeGamesWon","ServePoints")
 new_df$Type <- as.factor(ifelse(new_df$Type==1,"Winner","Loser"))
+set.seed(123456)
+new_df <- as.data.frame(new_df[sample(nrow(new_df)),])
+kable(summary(new_df[,1:3]))
+kable(summary(new_df[,4:6]))
 
 ```
+## Box Plot and density plot
 
-# Box Plot and density plot
-
-```{r echo=FALSE, out.width="80%"}
-x <- new_df[,1:6]
+```{r boxPlot, echo=FALSE, out.width="80%"}
+x1 <- new_df[,3:5]
+x2 <- new_df[,c(1,2,6)]
 y <- new_df[,7]
 #par(mfrow=c(2,3))
 #  for(i in 1:6) {
 #  boxplot(x[,i], main=names(new_df)[i])
 #  }
 
-featurePlot(x=x, y=y, plot="box",## Add a key at the top
+featurePlot(x=x1, y=y, plot="box",## Add a key at the top
             auto.key = list(columns = 3))
 ```
 
 ```{r echo=FALSE, out.width="80%"}
-featurePlot(x=x, y=y,plot = "density", 
+featurePlot(x=x2, y=y, plot="box",## Add a key at the top
+            auto.key = list(columns = 3))
+
+```
+
+Using Boxplot we explore the outliers defined as data points that is located outside the whiskers of the box plot. In our dataset all the predictors have significant outliers. 
+
+
+```{r DensityPlot, echo=FALSE}
+featurePlot(x=new_df[,1:6], y=y,plot = "density", 
             ## Pass in options to xyplot() to 
             ## make it prettier
             scales = list(x = list(relation="free"), 
@@ -100,6 +149,11 @@ featurePlot(x=x, y=y,plot = "density",
             auto.key = list(columns = 2))
 
 ```
+ 
+The density plots show that we have a bimodal distribution for ServeGamesWon feature and positive-skew distribution for ServePoints, AceCount and even FirstServeMade features.
+
+Gaussian-like curves can been seen for all the predictors. 
+
 
 \newpage
 
@@ -126,10 +180,11 @@ This will split our dataset into 10 parts, train in 9 and test on 1 and release 
 
 We are using the metric of “Accuracy” to evaluate models. This is a ratio of the number of correctly predicted instances in divided by the total number of instances in the dataset multiplied by 100 to give a percentage (e.g. 95% accurate). We will be using the metric variable when we run build and evaluate each model next.
 
+## Preparing the new data set for MAchine learning algorithms
 
-## Omitting Nas
+- Omitting Nas
 
-```{r}
+```{r, echo=FALSE}
 set.seed(12356)
 n <- dim(new_df)[1]
 id <- sample(1:n)
@@ -137,16 +192,16 @@ N_df <- new_df[id,]
 N_df <- as.data.frame(na.omit(N_df))
 ```
 
-## Split dataset into train and test
+ - Split dataset into train and test
 
-```{r}
+```{r echo=FALSE}
 n <- dim(N_df)[1]
 id <- sample(1:n,0.7*n)
 trainSet <- N_df[id,]
 testSet <- N_df[-id,]
 ```
 
-```{r results='hide',message=FALSE,warning=FALSE}
+```{r echo=FALSE, results='hide',message=FALSE,warning=FALSE}
 #linear algorithms
 set.seed(12356)
 fit.lda <- caret::train(Type~., data=trainSet,method="lda",
@@ -185,11 +240,13 @@ We now have 5 models and accuracy estimations for each. We need to compare the m
 
 We can report on the accuracy of each model by first creating a list of the created models and using the summary function.
 
-## summarize accuracy of models
+\newpage
+
+# summarize accuracy of models
 We can see the accuracy of each classifier and also other metrics like Kappa:
 
 
-```{r}
+```{r, echo=FALSE}
 results <- resamples(list(lda=fit.lda, NNs=fit.nns,
                           svm=fit.svm, KNN=fit.knn,
                           RF=fit.rf))
@@ -200,16 +257,20 @@ knitr::kable(resTemp$statistics$Kappa)
 
 We can also create a plot of the model evaluation results and compare the spread and the mean accuracy of each model. There is a population of accuracy measures for each algorithm because each algorithm was evaluated 10 times (10 fold cross validation).
 
-```{r}
+```{r echo=FALSE}
 dotplot(results)
 ```
-##  Make Predictions
 
-The NNs and LDA were respictively the most accurate models. Now we want to get an idea of the accuracy of the NNs model and LDA model on our test set.
+
+\newpage
+
+# Predicting
+
+The NNs and LDA were respectively the most accurate models. Now we want to get an idea of the accuracy of the NNs model and LDA model on our test set.
 
 ## Confusion matrix for Neural Networks model:
 
-```{r}
+```{r echo=FALSE, results='asis'}
 # estimate skill of NNs on the Test dataset
 preds <- predict(fit.nns, testSet)
 confusionMatrix(preds, testSet$Type)
@@ -217,13 +278,23 @@ confusionMatrix(preds, testSet$Type)
 
 ## Confusion matrix for LDA model:
 
-```{r}
+```{r echo=FALSE,results='asis'}
 # estimate skill of LDA on the Test dataset
 preds <- predict(fit.lda, testSet)
 confusionMatrix(preds, testSet$Type)
 ```
 
-We can see that the accuracy is 79%. Fairly we have an accurate and a reliably accurate model with NNs.
+We can see that the accuracies for both models  are approximately 78%. 
+
+\newpage
+
+# Refrences
+
+ [1] Data Recourse: https://www.kaggle.com/taylorbrownlow/atpwta-tennis-data?select=KaggleMatches.csv
+
+ [2] Bunker, Rory & Thabtah, Fadi. (2017). A Machine Learning Framework for Sport Result Prediction. Applied Computing and Informatics. 15. 10.1016/j.aci.2017.09.005. 
+ 
+ [3] Leung, Carson & Joseph, Kyle. (2014). Sports Data Mining: Predicting Results for the College Football Games. Procedia Computer Science. 35. 10.1016/j.procs.2014.08.153. 
 
 \newpage
 
